@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cmoil Şhop - Ürünler ve Admin Paneli</title>
+  <style>
+    /* Stil kodları burada */
+    body {
+      font-family: Arial, sans-serif;
+    }
+    .container {
+      width: 80%;
+      margin: 20px auto;
+    }
+    .product-card {
+      width: 200px;
+      margin: 20px;
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: center;
+    }
+    .product-card img {
+      width: 100%;
+      height: auto;
+      cursor: pointer;
+      transition: transform 0.3s ease;
+    }
+    .product-card img:hover {
+      transform: scale(1.1); /* Fotoğrafı hover ile büyütme */
+    }
+    .product-grid {
+      display: flex;
+      flex-wrap: wrap;
+    }
+    #loginBox {
+      width: 300px;
+      margin: 100px auto;
+      padding: 20px;
+      border: 1px solid #ccc;
+      background-color: #f9f9f9;
+    }
+    .btn {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .btn:hover {
+      background-color: #45a049;
+    }
+
+    /* Fotoğraf zoom özelliği */
+    .zoomed-image {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1000;
+      max-width: 90%;
+      max-height: 90%;
+      background-color: rgba(0, 0, 0, 0.7); /* Koyu arka plan */
+      padding: 10px;
+      border-radius: 5px;
+      overflow: hidden; /* Resmin taşmaması için */
+    }
+    .zoomed-image img {
+      width: 100%;
+      height: auto;
+      max-height: 80vh; /* Resmin maksimum yüksekliği ekranın %80'i kadar olacak */
+      object-fit: contain; /* Resmi sığdırırken bozulmasını engeller */
+      display: block;
+      margin: 0 auto;
+    }
+
+    /* Admin sayfasında fotoğraf boyutunu sınırlayalım */
+    .admin-product-img {
+      width: 150px;
+      height: 150px;
+      object-fit: cover;
+      cursor: pointer;
+      transition: transform 0.3s ease;
+    }
+    .admin-product-img:hover {
+      transform: scale(1.1);
+    }
+  </style>
+</head>
+<body>
+  <!-- Kullanıcı Sayfası -->
+  <div id="customerView" class="container">
+    <h2>Ürünler</h2>
+    <div class="product-grid" id="productList"></div>
+    <!-- Admin Girişi Butonu -->
+    <button class="btn" id="adminButton" onclick="showAdminLogin()">Admin Girişi</button>
+  </div>
+
+  <!-- Admin Login -->
+  <div id="loginOverlay" style="display: none;">
+    <div id="loginBox">
+      <h2>Admin Girişi</h2>
+      <input type="password" id="adminPassword" placeholder="Şifre">
+      <button class="btn" onclick="login()">Giriş Yap</button>
+      <p id="errorMsg" style="color:red; display:none;">Hatalı şifre!</p>
+      <button class="btn" onclick="showCustomerView()">Kullanıcı Sayfasına Dön</button> <!-- Geri Dön Butonu -->
+    </div>
+  </div>
+
+  <!-- Admin Panel -->
+  <div class="container" id="adminPanel" style="display: none;">
+    <h1>Admin Panel</h1>
+    <form id="productForm">
+      <h2>Yeni Ürün Ekle</h2>
+      <input type="text" id="name" placeholder="Ürün Adı" required>
+      <input type="file" id="uploadImage" accept="image/*">
+      <input type="text" id="image" placeholder="Görsel URL'si">
+      <textarea id="description" placeholder="Ürün Açıklaması" required></textarea>
+      <input type="number" id="price" placeholder="Fiyat" required>
+      <select id="category" required>
+        <option value="">Kategori Seçin</option>
+        <option>Telefonlar</option>
+        <option>Kulaklıklar</option>
+        <option>Güzellik</option>
+        <option>Ev Ürünleri</option>
+      </select>
+      <button type="submit" class="btn">Ürünü Kaydet</button>
+    </form>
+
+    <h2>Ürün Listesi</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Görsel</th>
+          <th>Ürün Adı</th>
+          <th>Açıklama</th>
+          <th>Kategori</th>
+          <th>Fiyat</th>
+          <th>İşlem</th>
+        </tr>
+      </thead>
+      <tbody id="productTable"></tbody>
+    </table>
+
+    <!-- Admin Sayfasından Kullanıcı Sayfasına Dönme Butonu -->
+    <button class="btn" onclick="showCustomerView()">Kullanıcı Sayfasına Dön</button>
+  </div>
+
+  <!-- Zoomed image modal -->
+  <div id="zoomedImageModal" class="zoomed-image" onclick="closeZoomedImage()">
+    <img id="zoomedImage" src="" alt="Zoomed Image">
+    <button class="btn" onclick="closeZoomedImage(event)">Kapat</button>
+  </div>
+
+  <script>
+    const form = document.getElementById('productForm');
+    const table = document.getElementById('productTable');
+    const overlay = document.getElementById('loginOverlay');
+    const adminPanel = document.getElementById('adminPanel');
+    const customerView = document.getElementById('customerView');
+    const errorMsg = document.getElementById('errorMsg');
+    const uploadImage = document.getElementById('uploadImage');
+    const imageInput = document.getElementById('image');
+    const zoomedImageModal = document.getElementById('zoomedImageModal');
+    const zoomedImage = document.getElementById('zoomedImage');
+    
+    const ADMIN_PASSWORD = '1234';
+
+    let products = JSON.parse(localStorage.getItem('products')) || [];
+    let editingIndex = null;
+
+    // Kullanıcı sayfasını ve admin panelini başlat
+    window.onload = function() {
+      renderCustomerView();
+    }
+
+    function showAdminLogin() {
+      // Kullanıcı sayfasını gizle
+      customerView.style.display = 'none';
+      // Admin giriş ekranını göster
+      overlay.style.display = 'block';
+    }
+
+    function login() {
+      const input = document.getElementById('adminPassword').value;
+      if (input === ADMIN_PASSWORD) {
+        overlay.style.display = 'none';
+        adminPanel.style.display = 'block';
+        renderProducts();
+      } else {
+        errorMsg.style.display = 'block';
+      }
+    }
+
+    function renderProducts() {
+      table.innerHTML = '';
+      products.forEach((product, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td><img src="${product.image}" alt="${product.name}" class="admin-product-img" onclick="zoomImage('${product.image}')"></td>
+          <td>${product.name}</td>
+          <td>${product.description}</td>
+          <td>${product.category}</td>
+          <td>${product.price} ₺</td>
+          <td>
+            <button class="edit-btn" onclick="editProduct(${index})">Düzenle</button>
+            <button class="delete-btn" onclick="deleteProduct(${index})">Sil</button>
+          </td>
+        `;
+        table.appendChild(row);
+      });
+    }
+
+    function renderCustomerView() {
+      const productList = document.getElementById('productList');
+      productList.innerHTML = ''; // Önceki ürünleri temizle
+      products.forEach(product => {
+        const productCard = document.createElement('div');
+        productCard.classList.add('product-card');
+        productCard.innerHTML = `
+          <img src="${product.image}" alt="${product.name}" onclick="zoomImage('${product.image}')">
+          <h3>${product.name}</h3>
+          <p>${product.description}</p>
+          <p class="price">${product.price} ₺</p>
+          <button>Sepete Ekle</button>
+        `;
+        productList.appendChild(productCard);
+      });
+    }
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const name = document.getElementById('name').value;
+      const image = document.getElementById('image').value;
+      const description = document.getElementById('description').value;
+      const price = document.getElementById('price').value;
+      const category = document.getElementById('category').value;
+      const newProduct = { name, image, description, price, category };
+
+      if (editingIndex !== null) {
+        products[editingIndex] = newProduct;
+        editingIndex = null;
+      } else {
+        products.push(newProduct);
+      }
+
+      // Ürünleri localStorage'a kaydet
+      localStorage.setItem('products', JSON.stringify(products));
+      renderProducts(); // Admin panelini güncelle
+      renderCustomerView(); // Müşteri tarafındaki ürünleri güncelle
+      form.reset();
+    });
+
+    function editProduct(index) {
+      const p = products[index];
+      document.getElementById('name').value = p.name;
+      document.getElementById('image').value = p.image;
+      document.getElementById('description').value = p.description;
+      document.getElementById('price').value = p.price;
+      document.getElementById('category').value = p.category;
+      editingIndex = index;
+    }
+
+    function deleteProduct(index) {
+      products.splice(index, 1);
+      localStorage.setItem('products', JSON.stringify(products));
+      renderProducts();
+      renderCustomerView(); // Müşteri tarafındaki ürünleri de güncelle
+    }
+
+    function zoomImage(imageUrl) {
+      zoomedImage.src = imageUrl;
+      zoomedImageModal.style.display = 'block';
+    }
+
+    function closeZoomedImage(event) {
+      if (event) {
+        event.stopPropagation(); // Kapanma butonuna tıklayınca etkinliği engelle
+      }
+      zoomedImageModal.style.display = 'none';
+    }
+
+    // Kullanıcı sayfasına dönmek için
+    function showCustomerView() {
+      adminPanel.style.display = 'none';
+      overlay.style.display = 'none';
+      customerView.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
